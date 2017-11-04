@@ -1,0 +1,144 @@
+import java.util.Map;
+import java.util.HashMap;
+
+Node[] nodes;
+Edge[] edges;
+Node fromNode;
+Node toNode;
+int edgeCount = 0;
+int nodeCount = 0;
+
+PFont font;
+
+void setup() {
+  size(1500, 1200);
+  pixelDensity(displayDensity());
+
+  font = createFont("SansSerif", 10);
+  textFont(font);
+
+  loadData();
+}
+
+void loadData() {
+  Table table = loadTable("stormofswords.csv", "header");
+
+  //Determine the number of unique nodes, i.e. characters in Game of Thrones
+  // There might be unique characters in either column so we combine them and then figure out the distinct ones.
+  String[] sourceNodes = table.getUnique("Source");
+  String[] targetNodes = table.getUnique("Target");
+  String[] combined = new String[sourceNodes.length + targetNodes.length];
+  System.arraycopy(sourceNodes, 0, combined, 0, sourceNodes.length);
+  System.arraycopy(targetNodes, 0, combined, sourceNodes.length, targetNodes.length);
+  StringList combinedList = new StringList(combined);
+  String[] uniqueNodeNames = combinedList.getUnique();
+
+  Map<String, Node> nodeLabels = new HashMap<String, Node>();
+  nodes = new Node[uniqueNodeNames.length];
+  
+  for (int i = 0; i<nodes.length; i++) {
+    nodes[i] = new Node(uniqueNodeNames[i]);
+    nodeLabels.put(nodes[i].label, nodes[i]);
+  }
+      
+  edges = new Edge[table.getRowCount()];
+
+
+  for (int i = 0; i<table.getRowCount(); i++) {
+    TableRow row = table.getRow(i);
+
+    String from = row.getString("Source");
+    String to = row.getString("Target");
+    float weight = row.getFloat("Weight");
+    
+    fromNode = nodeLabels.get(from);
+    fromNode.increment();
+    toNode = nodeLabels.get(to);
+    edges[i] = new Edge(fromNode,toNode,weight);
+  }
+}
+
+
+  //TODO: Update the node positions using a force-directed layout
+void updatePositions(){
+  float MAX_DISPLACEMENT_SQUARED = 10;
+  float L = 2; //spring rest length
+  float K_r = 1000; //repulsive force constant
+  float K_s = 0.0009; //spring constant
+  float delta_t = 10; //time step
+  
+  int N = nodes.length;
+  
+  //initialize net forces
+  for (int i = 0; i<N; i++) {
+    nodes[i].force_x = 0;
+    nodes[i].force_y = 0;
+  }
+  
+  //repulsion between all pairs
+  for (int i1 = 0; i1 < N; i1++) {
+    Node node1 = nodes[i1];
+    for (int i2 = i1+1; i2 < N; i2++) {
+      Node node2 = nodes[i2];
+      float dx = node2.x - node1.x;
+      float dy = node2.y - node1.y;
+      if (dx != 0 || dy !=0) {
+        float distanceSquared = dx*dx + dy*dy;
+        float distance =sqrt(distanceSquared); 
+        float force = K_r / distanceSquared;
+        float fx = force * dx / distance;
+        float fy = force * dy / distance;
+        node1.force_x = node1.force_x - fx;
+        node1.force_y = node1.force_y - fy;
+        node2.force_x = node2.force_x + fx;
+        node2.force_y = node2.force_y + fy;
+       
+      }
+    }
+  }
+  
+  //spring force between adjacent pairs
+  for (int i1 = 0; i1<edges.length; i1++) {
+     Node node1 = edges[i1].from;
+     Node node2 = edges[i1].to;
+     float dx = node2.x - node1.x;
+     float dy = node2.y - node1.y;
+     if (dx != 0 || dy != 0) {
+       float distance = sqrt(dx*dx + dy*dy);
+       float force = K_s * (distance - L);
+       float fx = force * dx / distance;
+       float fy = force * dy / distance;
+       node1.force_x = node1.force_x + fx;
+       node1.force_y = node1.force_y + fy;
+       node2.force_x = node2.force_x - fx;
+       node2.force_y = node2.force_y - fy;
+     }
+  }
+     
+  //update positions
+  for (int i = 0; i <N; i++) {
+    Node node = nodes[i];
+    float dx = delta_t * node.force_x;
+    float dy = delta_t * node.force_y;
+    float displacementSquared = dx*dx + dy*dy;
+    if (displacementSquared > MAX_DISPLACEMENT_SQUARED) {
+      float s = sqrt (MAX_DISPLACEMENT_SQUARED / displacementSquared);
+      dx = dx * s;
+      dy = dy * s;
+    }
+    node.x = node.x + dx;
+    node.y = node.y + dy;
+  }
+}
+
+void draw() {
+  background(255);
+  updatePositions();
+  for (Edge edge : edges) {
+    edge.draw();
+  }
+
+  for (Node node : nodes) {
+    node.draw();
+  }
+}
